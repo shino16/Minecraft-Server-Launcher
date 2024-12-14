@@ -1,10 +1,11 @@
 import discord
 import os
 import urllib.request
+from typing import Awaitable, Callable
 
 
 TOKEN = os.environ.get("DISCORD_BOT_TOKEN")
-BASE_URL = os.environ.get('AWS_BASE_URL')
+BASE_URL = os.environ.get("AWS_BASE_URL")
 
 
 intents = discord.Intents.default()
@@ -30,26 +31,21 @@ async def open_url(
     target: str,
     action: str,
     command: str,
-    delete_after: float | None = None,
+    send_message: Callable[[str], Awaitable],
 ):
     try:
         if target in ["be", "je", "debug"]:
             url = f"{BASE_URL}?target={target}&action={action}"
             print("GET", url)
             resp = urllib.request.urlopen(url)
-            await interaction.response.send_message(
-                f"`/{command} {target}` へのレスポンス：{resp.read().decode()}",
-                delete_after=delete_after,
+            await send_message(
+                f"`/{command} {target}` へのレスポンス：{resp.read().decode()}"
             )
         else:
-            await interaction.response.send_message(
-                "無効なターゲットです。", delete_after=delete_after
-            )
+            await send_message("無効なターゲットです。")
             await show_help(interaction.channel)
     except Exception as e:
-        await interaction.response.send_message(
-            f"エラー：{e}", delete_after=delete_after
-        )
+        await send_message(f"エラー：{e}")
 
 
 @client.event
@@ -62,19 +58,22 @@ async def on_ready():
 @tree.command()
 async def start(interaction, target: str):
     print("/start")
-    await open_url(interaction, target, "start", "start")
+    await interaction.response.defer()
+    await open_url(interaction, target, "start", "start", interaction.followup.send)
 
 
 @tree.command()
 async def stop(interaction, target: str):
     print("/stop")
-    await open_url(interaction, target, "stop", "stop")
+    await interaction.response.defer()
+    await open_url(interaction, target, "stop", "stop", interaction.followup.send)
 
 
 @tree.command()
 async def status(interaction, target: str):
     print("/status", repr(target))
-    await open_url(interaction, target, "state", "status")
+    await interaction.response.defer()
+    await open_url(interaction, target, "state", "status", interaction.followup.send)
 
 
 @tree.command()
@@ -108,7 +107,11 @@ class ControlButton(discord.ui.Button):
         target_ja = interaction.message.content[len(prefix) :]
         target = targets.get(target_ja)
         print(f"target: {target}, command: {self.command}")
-        await open_url(interaction, target, self.command, self.command, delete_after=3)
+
+        def send_message(msg):
+            return interaction.response.send_message(msg, delete_after=3)
+
+        await open_url(interaction, target, self.command, self.command, send_message)
 
 
 @tree.command()
